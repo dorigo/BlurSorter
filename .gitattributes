@@ -1,0 +1,12 @@
+# 預設：文字檔統一用 LF 存放
+* text=auto eol=lf
+
+# Windows 批次檔必須是 CRLF，否則在 Windows 上執行會出錯
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二進位檔
+*.onnx binary
+*.ico binary
+*.png binary
+*.jpg binary

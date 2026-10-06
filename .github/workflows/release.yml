@@ -1,0 +1,60 @@
+# 推送 v 開頭的標籤（例如 v2.4）時，自動在 Windows 上打包 BlurSorter.exe 並發布到 Releases。
+# 也可以在 GitHub 的 Actions 頁面手動執行（只打包、不發布，exe 會放在執行結果的 Artifacts）。
+name: Build & Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build exe
+        run: |
+          python make_icon.py
+          pyinstaller --noconfirm --clean --onefile --windowed `
+            --name BlurSorter `
+            --add-data "models;models" `
+            --icon "icon.ico" --add-data "icon.ico;." `
+            blur_sorter.py
+
+      - name: Smoke test (exe exists)
+        run: |
+          if (!(Test-Path dist/BlurSorter.exe)) { throw "BlurSorter.exe not found" }
+          (Get-Item dist/BlurSorter.exe).Length / 1MB
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BlurSorter-exe
+          path: dist/BlurSorter.exe
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/BlurSorter.exe
+          body: |
+            ## 失焦照片分類器 ${{ github.ref_name }}
+
+            自動找出失焦的人像照片，複製到「清楚」「模糊」資料夾，原始照片完全不動。
+
+            **下載下方的 `BlurSorter.exe`，點兩下即可使用，不需安裝 Python。**
+
+            > 首次開啟若出現「Windows 已保護您的電腦」，請按「其他資訊」→「仍要執行」。
+            > 這是因為程式沒有付費的數位簽章，屬於正常現象。

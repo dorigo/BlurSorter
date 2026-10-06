@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# PyInstaller 打包產物（exe 請上傳到 GitHub Releases，不要放進 repo）
+build/
+dist/
+*.spec
+
+# 編輯器 / 系統
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 測試用照片與程式產生的資料夾
+清楚/
+模糊/
+失焦照片/
+_分類紀錄.csv
+_處理紀錄.csv
+*.log
