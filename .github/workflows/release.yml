@@ -1,20 +1,57 @@
-# 推送 v 開頭的標籤（例如 v2.4）時，自動在 Windows 上打包 BlurSorter.exe 並發布到 Releases。
-# 也可以在 GitHub 的 Actions 頁面手動執行（只打包、不發布，exe 會放在執行結果的 Artifacts）。
+# 自動打包並發布 BlurSorter.exe
+#
+# 發布新版的方法：把 blur_sorter.py 裡的 APP_VER 改成新版本號（例如 "2.5"）並推送到 main。
+# GitHub 會在 Windows 上自動打包 exe，建立 v2.5 標籤與 Release，並附上 BlurSorter.exe。
+# 如果該版本的 Release 已經存在，就只打包驗證、不重複發布。
+#
+# 也可以在 GitHub 的 Actions 頁面手動執行（Run workflow）。
 name: Build & Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "*.py"
+      - "requirements.txt"
+      - "models/**"
+      - "icon.*"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read version
+        id: ver
+        shell: pwsh
+        run: |
+          $m = Select-String -Path blur_sorter.py -Pattern '^APP_VER\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if (-not $m) { throw "APP_VER not found in blur_sorter.py" }
+          $v = $m.Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=v$v"    >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $v"
+
+      - name: Check existing release
+        id: exists
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ steps.ver.outputs.tag }}" -R "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) { "found=true" >> $env:GITHUB_OUTPUT; Write-Host "Release already exists, build only." }
+          else { "found=false" >> $env:GITHUB_OUTPUT }
+          exit 0
 
       - uses: actions/setup-python@v5
         with:
@@ -34,23 +71,27 @@ jobs:
             --icon "icon.ico" --add-data "icon.ico;." `
             blur_sorter.py
 
-      - name: Smoke test (exe exists)
+      - name: Smoke test
+        shell: pwsh
         run: |
           if (!(Test-Path dist/BlurSorter.exe)) { throw "BlurSorter.exe not found" }
-          (Get-Item dist/BlurSorter.exe).Length / 1MB
+          "{0:N1} MB" -f ((Get-Item dist/BlurSorter.exe).Length / 1MB)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BlurSorter-exe
+          name: BlurSorter-${{ steps.ver.outputs.tag }}
           path: dist/BlurSorter.exe
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.exists.outputs.found == 'false'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: BlurSorter ${{ steps.ver.outputs.tag }}
           files: dist/BlurSorter.exe
           body: |
-            ## 失焦照片分類器 ${{ github.ref_name }}
+            ## 失焦照片分類器 ${{ steps.ver.outputs.tag }}
 
             自動找出失焦的人像照片，複製到「清楚」「模糊」資料夾，原始照片完全不動。
 

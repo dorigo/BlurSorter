@@ -123,6 +123,11 @@ BlurSorter/
 └── requirements.txt
 ```
 
+## 發布新版本（維護者）
+
+把 `blur_sorter.py` 裡的 `APP_VER` 改成新版本號（例如 `"2.5"`），推送到 `main` 即可。
+GitHub Actions 會自動在 Windows 上打包 `BlurSorter.exe`，建立 `v2.5` 標籤與 Release 並附上 exe。
+
 ## 更換程式圖示
 
 把正方形圖片（建議 256×256 以上，可透明背景）命名為 `icon.png` 覆蓋原檔，重新執行 `build.bat` 即可，會自動套用到 exe、視窗與工作列。
