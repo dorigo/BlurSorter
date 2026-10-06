@@ -23,6 +23,13 @@
   <img src="docs/screenshot.png" width="900" alt="失焦照片分類器 BlurSorter 程式畫面：自動判斷人像照片清楚或模糊">
 </p>
 
+## 60 秒操作示範
+
+<p align="center">
+  <a href="docs/tutorial-zh.mp4"><img src="docs/tutorial-zh.gif" width="900" alt="失焦照片分類器 60 秒操作教學：選資料夾、分析、預覽、調整門檻、複製分類"></a><br>
+  <sub>▶ 點擊畫面觀看完整影片（MP4，含字幕）　｜　<a href="docs/tutorial-en.mp4">English version</a></sub>
+</p>
+
 ---
 
 ## 特色

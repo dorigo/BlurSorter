@@ -22,6 +22,13 @@
   <img src="docs/screenshot-en.png" width="900" alt="BlurSorter screenshot: automatic blur detection for portrait photos">
 </p>
 
+## 60-second walkthrough
+
+<p align="center">
+  <a href="docs/tutorial-en.mp4"><img src="docs/tutorial-en.gif" width="900" alt="BlurSorter 60-second tutorial: choose folder, analyze, preview, adjust threshold, copy"></a><br>
+  <sub>▶ Click to watch the full video (MP4 with captions)   |   <a href="docs/tutorial-zh.mp4">中文版</a></sub>
+</p>
+
 ---
 
 ## Features
