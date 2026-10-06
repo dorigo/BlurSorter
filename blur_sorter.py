@@ -37,7 +37,7 @@ from PIL import Image, ImageOps, ImageTk, ImageDraw
 import focus_analyzer as fa
 from i18n import T, set_lang, get_lang, all_values, detect_default_lang, LANG_NAMES
 
-APP_VER = "2.5"
+APP_VER = "2.5.1"
 SPONSOR_URL = "https://www.paypal.com/ncp/payment/ATJ3PTJAC8RC6"
 AUTHOR_URL = "https://dorigo-image.com"
 SETTINGS_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "BlurSorter")
@@ -280,6 +280,7 @@ class App(tk.Tk):
         self._pv_cache = None
         self._pv_s = None
         self._pv_focus = None
+        self._pv_error = None
         self._filter_key = "f_all"
         self._building = False
 
@@ -871,6 +872,7 @@ class App(tk.Tk):
         self._preview_path = p
         self._pv_res = None
         self._pv_cache = None
+        self._pv_error = None
         if r is None or not r.ok or not os.path.exists(p):
             self.lbl_info.configure(text=(error_text(r.error) if r and not r.ok else T("file_missing")))
             return
@@ -895,9 +897,10 @@ class App(tk.Tk):
         th = self.face_th if r.method == "face" else self.tile_th
         how = T("pv_how_face", n=len(r.faces)) if r.method == "face" else T("pv_how_tile")
         verdict = (T("v_blur") if v else T("v_sharp")) + (T("v_manual") if p in self.override else "")
+        err = getattr(self, "_pv_error", None)
         self.lbl_info.configure(text=(
             f"{os.path.basename(p)}   {r.width}×{r.height}\n"
-            + T("pv_score", score=r.score, th=th, verdict=verdict) + f"\n{how}"))
+            + T("pv_score", score=r.score, th=th, verdict=verdict) + f"\n{how}" + (("\n" + T("preview_fail", e=err)) if err else "")))
 
     def _pv_source(self, need_full: bool):
         """取得解碼後的圖；需要時才解碼原始解析度，並快取同一張圖"""
@@ -978,20 +981,30 @@ class App(tk.Tk):
         try:
             need_full = s > (self._pv_fit_scale() * 1.5)
             im = self._pv_source(need_full)
+            # 載入的圖 相對 原圖 的比例。寬、高要分開算：JPEG 快速縮小解碼時，
+            # 寬高各自無條件進位（例如 6006×4004 → 1502×1001），只用寬度的比例
+            # 會讓範圍超出圖片零點幾個像素，Pillow 就會拒絕繪製而變成全黑。
+            kx = im.width / float(r.width)
+            ky = im.height / float(r.height)
+            box = (max(0.0, ix0 / s * kx), max(0.0, iy0 / s * ky),
+                   min(float(im.width), ix1 / s * kx), min(float(im.height), iy1 / s * ky))
+            if box[2] - box[0] <= 0 or box[3] - box[1] <= 0:
+                return
+            out_w, out_h = max(1, int(round(ix1 - ix0))), max(1, int(round(iy1 - iy0)))
+            src_w = box[2] - box[0]
+            if out_w >= src_w * 2:
+                resample = Image.NEAREST         # 大幅放大：看得到每個像素，判斷對焦最準
+            elif out_w >= src_w:
+                resample = Image.BICUBIC
+            else:
+                resample = Image.LANCZOS
+            tile = im.resize((out_w, out_h), resample, box=box)
         except Exception as e:
-            self.lbl_info.configure(text=T("preview_fail", e=e))
+            self._pv_error = str(e)
+            log_error("preview", self._preview_path or "", e)
+            self._pv_info()
             return
-        k = im.width / float(r.width)          # 載入的圖 相對 原圖 的比例
-        box = (ix0 / s * k, iy0 / s * k, ix1 / s * k, iy1 / s * k)
-        out_w, out_h = max(1, int(round(ix1 - ix0))), max(1, int(round(iy1 - iy0)))
-        src_w = box[2] - box[0]
-        if out_w >= src_w * 2:
-            resample = Image.NEAREST         # 大幅放大：看得到每個像素，判斷對焦最準
-        elif out_w >= src_w:
-            resample = Image.BICUBIC
-        else:
-            resample = Image.LANCZOS
-        tile = im.resize((out_w, out_h), resample, box=box)
+        self._pv_error = None
         self._preview_img = ImageTk.PhotoImage(tile)
         self.canvas.create_image(ix0, iy0, image=self._preview_img, anchor="nw", tags="img")
         self.canvas.tag_lower("img")
