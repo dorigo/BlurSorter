@@ -5,7 +5,7 @@
 <h1 align="center">BlurSorter</h1>
 
 <p align="center">
-  Automatically finds out-of-focus portrait photos and sorts them into <b>Sharp</b> and <b>Blurry</b> folders — your originals are never touched.
+  A photo culling tool that automatically finds blurry, out-of-focus and shaky portrait photos and sorts them into <b>Sharp</b> and <b>Blurry</b> folders — your originals are never touched.
 </p>
 
 <p align="center">
@@ -18,9 +18,15 @@
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue">
 </p>
 
+<p align="center">
+  <img src="docs/screenshot-en.png" width="900" alt="BlurSorter screenshot: automatic blur detection for portrait photos">
+</p>
+
 ---
 
 ## Features
+
+Weddings, events and portrait sessions easily produce thousands of frames, and zooming in on each one to check focus takes hours. BlurSorter flags **out-of-focus**, **blurry** and **camera-shake** shots in minutes, so you only need to review the ones it marks — a big time saver when **culling photos**.
 
 - **Made for shallow depth of field.** A blurry background doesn't count against a photo — BlurSorter checks whether the **face and eyes** are sharp, not the average of the whole frame.
 - **Works on group shots.** The photo's score comes from the sharpest *main* face, so it passes as long as the subject is in focus. Small faces in the background are ignored.

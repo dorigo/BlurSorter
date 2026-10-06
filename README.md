@@ -5,8 +5,8 @@
 <h1 align="center">BlurSorter 失焦照片分類器</h1>
 
 <p align="center">
-  自動找出失焦的人像照片，分類到「清楚」與「模糊」資料夾 —— 原始照片完全不動。<br>
-  <sub>Automatically sorts portrait photos into sharp / blurry folders for Windows. Face- and eye-aware, made for shallow depth-of-field shots.</sub>
+  幫攝影師快速選片：自動挑出失焦、模糊、手震的人像照片，分類到「清楚」與「模糊」資料夾 —— 原始照片完全不動。<br>
+  <sub>Photo culling tool for Windows — automatically detects blurry / out-of-focus portrait photos and sorts them into sharp / blurry folders. Face- and eye-aware, made for shallow depth-of-field shots.</sub>
 </p>
 
 <p align="center">
@@ -19,13 +19,15 @@
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue">
 </p>
 
-<!-- 截圖：把程式畫面存成 docs/screenshot.png 後，刪掉這行註解的開頭與結尾即可顯示
-<p align="center"><img src="docs/screenshot.png" width="900" alt="screenshot"></p>
--->
+<p align="center">
+  <img src="docs/screenshot.png" width="900" alt="失焦照片分類器 BlurSorter 程式畫面：自動判斷人像照片清楚或模糊">
+</p>
 
 ---
 
 ## 特色
+
+婚禮、活動、人像拍攝動輒上千張照片，一張張放大檢查對焦非常耗時。BlurSorter 能在幾分鐘內自動挑出**失焦照片**、**模糊照片**與**手震照片**，讓你只需要確認被標記的那些，大幅縮短**挑照片、選片**的時間。
 
 - **為淺景深人像設計**：背景本來就模糊的照片不會被誤判。程式看的是**臉部與雙眼**是否清楚，不是整張照片的平均。
 - **團體照也適用**：取主要人臉中最清楚的一張，只要主角對到焦就算合格；背景的小臉、路人不列入計算。

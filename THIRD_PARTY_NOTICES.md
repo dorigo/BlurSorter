@@ -40,4 +40,9 @@ SOFTWARE.
 ## 程式圖示
 
 `icon.png` / `icon.ico` 為作者 Dorigo 的個人形象圖，著作權屬於作者，**不包含在 GPL 授權範圍內**。
-如果你要修改並重新發布本程式，請換成你自己的圖示（見 README「更換程式圖示」）。
+如果你要修改並重新發布本程式，請換成你自己的圖示（替換 `icon.png` 後重新打包即可）。
+
+## 說明文件截圖
+
+`docs/` 內截圖使用的範例照片來自 [scikit-image](https://scikit-image.org/docs/stable/api/skimage.data.html) 隨附的公有領域影像：
+太空人 Eileen Collins 肖像與火箭照片（NASA，公有領域）、咖啡照片（Rachel Michetti，CC0）。
