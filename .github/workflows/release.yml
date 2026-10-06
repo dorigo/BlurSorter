@@ -15,6 +15,7 @@ on:
       - "requirements.txt"
       - "models/**"
       - "icon.*"
+      - "splash.png"
       - ".github/workflows/release.yml"
   workflow_dispatch:
 
@@ -62,25 +63,40 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Build exe
+      - name: Build folder version (fast start)
         run: |
           python make_icon.py
+          pyinstaller --noconfirm --clean --onedir --windowed `
+            --name BlurSorter `
+            --add-data "models;models" `
+            --icon "icon.ico" --add-data "icon.ico;." `
+            --distpath dist_dir --workpath build_dir `
+            blur_sorter.py
+          Compress-Archive -Path dist_dir/BlurSorter -DestinationPath "BlurSorter-${{ steps.ver.outputs.tag }}-windows.zip"
+
+      - name: Build single exe (with splash screen)
+        run: |
           pyinstaller --noconfirm --clean --onefile --windowed `
             --name BlurSorter `
             --add-data "models;models" `
             --icon "icon.ico" --add-data "icon.ico;." `
+            --splash splash.png `
             blur_sorter.py
 
       - name: Smoke test
         shell: pwsh
         run: |
           if (!(Test-Path dist/BlurSorter.exe)) { throw "BlurSorter.exe not found" }
-          "{0:N1} MB" -f ((Get-Item dist/BlurSorter.exe).Length / 1MB)
+          if (!(Test-Path dist_dir/BlurSorter/BlurSorter.exe)) { throw "folder build not found" }
+          "exe: {0:N1} MB" -f ((Get-Item dist/BlurSorter.exe).Length / 1MB)
+          "zip: {0:N1} MB" -f ((Get-Item "BlurSorter-${{ steps.ver.outputs.tag }}-windows.zip").Length / 1MB)
 
       - uses: actions/upload-artifact@v4
         with:
           name: BlurSorter-${{ steps.ver.outputs.tag }}
-          path: dist/BlurSorter.exe
+          path: |
+            dist/BlurSorter.exe
+            BlurSorter-${{ steps.ver.outputs.tag }}-windows.zip
 
       - name: Publish release
         if: steps.exists.outputs.found == 'false'
@@ -89,13 +105,24 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: BlurSorter ${{ steps.ver.outputs.tag }}
-          files: dist/BlurSorter.exe
+          files: |
+            BlurSorter-${{ steps.ver.outputs.tag }}-windows.zip
+            dist/BlurSorter.exe
           body: |
             ## 失焦照片分類器 ${{ steps.ver.outputs.tag }}
 
             自動找出失焦的人像照片，複製到「清楚」「模糊」資料夾，原始照片完全不動。
 
-            **下載下方的 `BlurSorter.exe`，點兩下即可使用，不需安裝 Python。**
+            ### 下載哪一個？
+            | 檔案 | 說明 |
+            |---|---|
+            | **`BlurSorter-${{ steps.ver.outputs.tag }}-windows.zip`**（推薦） | 解壓縮後執行資料夾內的 `BlurSorter.exe`。**啟動最快**，幾乎秒開。 |
+            | `BlurSorter.exe` | 單一檔案，方便攜帶。每次啟動需要先解壓，會顯示「載入中」畫面，約需數秒到十幾秒。 |
+
+            都不需要安裝 Python。
 
             > 首次開啟若出現「Windows 已保護您的電腦」，請按「其他資訊」→「仍要執行」。
             > 這是因為程式沒有付費的數位簽章，屬於正常現象。
+
+            ---
+            **Which file?** `…-windows.zip` (recommended): unzip and run `BlurSorter.exe` inside — starts fastest. `BlurSorter.exe`: single file, shows a loading screen while it unpacks (a few seconds each launch).

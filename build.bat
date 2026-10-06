@@ -39,6 +39,7 @@ if exist "icon.ico" set ICON_ARGS=--icon "icon.ico" --add-data "icon.ico;."
     --name BlurSorter ^
     --add-data "models;models" ^
     %ICON_ARGS% ^
+    --splash splash.png ^
     blur_sorter.py || goto :fail
 
 echo.

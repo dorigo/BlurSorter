@@ -37,7 +37,7 @@ from PIL import Image, ImageOps, ImageTk, ImageDraw
 import focus_analyzer as fa
 from i18n import T, set_lang, get_lang, all_values, detect_default_lang, LANG_NAMES
 
-APP_VER = "2.5.1"
+APP_VER = "2.5.2"
 SPONSOR_URL = "https://www.paypal.com/ncp/payment/ATJ3PTJAC8RC6"
 AUTHOR_URL = "https://dorigo-image.com"
 SETTINGS_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "BlurSorter")
@@ -1275,7 +1275,14 @@ def main():
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Dorigo.BlurSorter")
         except Exception:
             pass
-    App().mainloop()
+    app = App()
+    # 單一 exe 版會先顯示啟動畫面（PyInstaller --splash），主視窗準備好後關閉
+    try:
+        import pyi_splash  # type: ignore
+        pyi_splash.close()
+    except Exception:
+        pass
+    app.mainloop()
 
 
 if __name__ == "__main__":

@@ -47,9 +47,14 @@ Weddings, events and portrait sessions easily produce thousands of frames, and z
 
 ## Download
 
-### Option 1: Download the exe (recommended)
+### Option 1: Download (recommended)
 
-Get the latest `BlurSorter.exe` from the [Releases](../../releases) page and double-click it. No Python needed.
+Get the latest version from the [Releases](../../releases) page. No Python needed:
+
+| File | Notes |
+|---|---|
+| **`BlurSorter-vX.X.X-windows.zip`** (recommended) | Unzip anywhere and run `BlurSorter.exe` inside. **Starts fastest.** |
+| `BlurSorter.exe` | Single portable file. Unpacks itself on every launch and shows a loading screen, so it takes a few seconds to start. |
 
 > On first launch Windows may show "Windows protected your PC". This happens because the program has no paid code-signing certificate. Click **More info** → **Run anyway**.
 
