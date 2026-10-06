@@ -19,7 +19,10 @@ desktop.ini
 # 測試用照片與程式產生的資料夾
 清楚/
 模糊/
+Sharp/
+Blurry/
 失焦照片/
 _分類紀錄.csv
+_sort_log.csv
 _處理紀錄.csv
 *.log

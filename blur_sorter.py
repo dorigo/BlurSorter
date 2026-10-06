@@ -35,9 +35,9 @@ from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageOps, ImageTk, ImageDraw
 
 import focus_analyzer as fa
+from i18n import T, set_lang, get_lang, all_values, detect_default_lang, LANG_NAMES
 
-APP_NAME = "失焦照片分類器"
-APP_VER = "2.4"
+APP_VER = "2.5"
 SPONSOR_URL = "https://www.paypal.com/ncp/payment/ATJ3PTJAC8RC6"
 AUTHOR_URL = "https://dorigo-image.com"
 SETTINGS_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "BlurSorter")
@@ -46,19 +46,30 @@ SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
 DEFAULTS = {
     "src": "", "recursive": False,
     "mode": "relative", "face_rel": 40, "tile_rel": 40, "face_abs": 25.0, "tile_abs": 5.0,
-    "sidecar": True, "geometry": "1280x800", "zoom": "符合視窗",
+    "sidecar": True, "geometry": "1280x800", "zoom": "fit", "lang": "",
 }
 
-FILTERS = ["全部", "模糊", "清楚", "已複製", "錯誤"]
+FILTER_KEYS = ["f_all", "f_blur", "f_sharp", "f_done", "f_err"]
 
-ZOOM_FIT = "符合視窗"
-ZOOM_CHOICES = [ZOOM_FIT, "25%", "50%", "75%", "100%", "150%", "200%", "300%"]
+ZOOM_FIT = "fit"          # 設定檔內部用的值；畫面上顯示 T("zoom_fit")
+ZOOM_PCTS = ["25%", "50%", "75%", "100%", "150%", "200%", "300%"]
 ZOOM_STEPS = [5, 10, 15, 25, 33, 50, 67, 75, 100, 150, 200, 300, 400, 600, 800]
 ZOOM_MIN, ZOOM_MAX = 5, 800
 
-SHARP_DIR = "清楚"
-BLUR_DIR = "模糊"
 LEGACY_DIRS = ("失焦照片",)   # 舊版建立的資料夾，掃描時一併略過
+
+
+def app_name() -> str:
+    return T("app_name")
+
+
+def output_dir_names() -> set:
+    """所有語言的「清楚 / 模糊」資料夾名稱（掃描時都要略過）"""
+    return all_values("sharp_dir") | all_values("blur_dir") | set(LEGACY_DIRS)
+
+
+def error_text(err: str) -> str:
+    return T("err_decode") if err == "decode_failed" else err
 
 
 def load_settings() -> dict:
@@ -68,6 +79,10 @@ def load_settings() -> dict:
             s.update(json.load(f))
     except Exception:
         pass
+    if s.get("zoom") in all_values("zoom_fit"):   # 舊版存的是「符合視窗」
+        s["zoom"] = ZOOM_FIT
+    if s.get("lang") not in LANG_NAMES:
+        s["lang"] = detect_default_lang()
     return s
 
 
@@ -190,7 +205,8 @@ def who_locks(path: str) -> list:
             count = wintypes.UINT(needed.value)
             if rm.RmGetList(session, ctypes.byref(needed), ctypes.byref(count), arr, ctypes.byref(reasons)) != 0:
                 return []
-            return [(int(arr[i].Process.dwProcessId), arr[i].strAppName or "未知程式") for i in range(count.value)]
+            return [(int(arr[i].Process.dwProcessId), arr[i].strAppName or T("err_unknown_app"))
+                    for i in range(count.value)]
         finally:
             rm.RmEndSession(session)
     except Exception:
@@ -212,19 +228,14 @@ def explain_error(e: Exception, path: str = "") -> str:
     if isinstance(e, PermissionError):
         holders = who_locks(path) if path else []
         if holders:
-            names = []
-            for pid, name in holders:
-                names.append(f"{name}（本程式）" if pid == os.getpid() else f"{name}（PID {pid}）")
-            return f"{tag}檔案正被以下程式使用：" + "、".join(names) + "。原檔保留未動"
+            names = [T("err_this_app", name=name) if pid == os.getpid() else T("err_pid", name=name, pid=pid)
+                     for pid, name in holders]
+            return tag + T("err_locked_by", names=T("err_list_sep").join(names))
         if code == 5:
-            return (f"{tag}存取被拒。\n"
-                    "　可能是 Windows「受控資料夾存取」擋住了本程式（桌面、文件、圖片等資料夾受保護）。\n"
-                    "　解決方式：Windows 安全性 → 病毒與威脅防護 → 管理勒索軟體防護 → "
-                    "允許應用程式通過受控資料夾存取 → 加入 BlurSorter.exe；"
-                    "或把照片放在受保護資料夾以外的位置（例如 D:\\照片）")
-        return f"{tag}檔案被其他程式使用中。原檔保留未動，請關閉後再試一次"
+            return tag + T("err_denied")
+        return tag + T("err_in_use")
     if isinstance(e, FileNotFoundError):
-        return f"{tag}找不到檔案（可能已被移走）"
+        return tag + T("err_not_found")
     return f"{tag}{e}"
 
 
@@ -245,7 +256,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.cfg = load_settings()
-        self.title(f"{APP_NAME} v{APP_VER}")
+        set_lang(self.cfg["lang"])
+        self.title(f"{app_name()} v{APP_VER}")
         self.geometry(self.cfg.get("geometry", "1280x800"))
         self.minsize(1000, 640)
         self._setup_style()
@@ -268,6 +280,8 @@ class App(tk.Tk):
         self._pv_cache = None
         self._pv_s = None
         self._pv_focus = None
+        self._filter_key = "f_all"
+        self._building = False
 
         self._build_ui()
         self._recalc()
@@ -275,7 +289,7 @@ class App(tk.Tk):
         self.after(100, self._poll)
 
         if not os.path.exists(fa.MODEL_PATH):
-            messagebox.showwarning(APP_NAME, "找不到人臉模型檔，將只使用分區判斷。\n" + fa.MODEL_PATH)
+            messagebox.showwarning(app_name(), T("no_model", path=fa.MODEL_PATH))
 
     # ------------------------------------------------------------ 介面
     def _set_window_icon(self):
@@ -313,47 +327,54 @@ class App(tk.Tk):
         st.configure("Big.TButton", padding=(14, 6))
 
     def _build_ui(self):
+        self._building = True
         pad = dict(padx=6, pady=4)
 
-        # --- 標題列（右上角贊助按鈕）
+        # --- 標題列（右上角：語言、贊助、作者網站）
         header = ttk.Frame(self)
         header.pack(fill="x", padx=8, pady=(8, 0))
-        ttk.Label(header, text=f"{APP_NAME}  v{APP_VER}", font=("Microsoft JhengHei UI", 12, "bold")).pack(side="left")
-        # side="right" 先放的會在最右邊：作者網站 → 贊助
-        self.btn_author = self._link_button(header, "作者網站 ↗", AUTHOR_URL, "#455a64", "#263238")
+        ttk.Label(header, text=f"{app_name()}  v{APP_VER}", font=("Microsoft JhengHei UI", 12, "bold")).pack(side="left")
+        # side="right" 先放的會在最右邊：作者網站 → 贊助 → 標語 → 語言
+        self.btn_author = self._link_button(header, T("author_site"), AUTHOR_URL, "#455a64", "#263238")
         self.btn_author.pack(side="right")
-        self.btn_sponsor = self._link_button(header, "♥ 贊助開發者", SPONSOR_URL, "#e91e63", "#c2185b")
+        self.btn_sponsor = self._link_button(header, T("sponsor"), SPONSOR_URL, "#e91e63", "#c2185b")
         self.btn_sponsor.pack(side="right", padx=(0, 6))
-        ttk.Label(header, text="覺得好用的話，歡迎請我喝杯咖啡 ☕", foreground="#888").pack(side="right", padx=8)
+        ttk.Label(header, text=T("tagline"), foreground="#888").pack(side="right", padx=8)
+        self.v_lang = tk.StringVar(value=LANG_NAMES[get_lang()])
+        cb_lang = ttk.Combobox(header, textvariable=self.v_lang, values=list(LANG_NAMES.values()),
+                               width=8, state="readonly")
+        cb_lang.pack(side="right", padx=(4, 12))
+        cb_lang.bind("<<ComboboxSelected>>", lambda e: self._lang_selected())
+        ttk.Label(header, text=T("language")).pack(side="right")
 
         # --- 資料夾
-        top = ttk.LabelFrame(self, text="資料夾")
+        top = ttk.LabelFrame(self, text=T("folder_frame"))
         top.pack(fill="x", padx=8, pady=(6, 4))
         top.columnconfigure(1, weight=1)
 
         self.v_src = tk.StringVar(value=self.cfg["src"])
         self.v_rec = tk.BooleanVar(value=self.cfg["recursive"])
 
-        ttk.Label(top, text="照片資料夾").grid(row=0, column=0, sticky="w", **pad)
+        ttk.Label(top, text=T("photo_folder")).grid(row=0, column=0, sticky="w", **pad)
         ttk.Entry(top, textvariable=self.v_src).grid(row=0, column=1, sticky="ew", **pad)
-        ttk.Button(top, text="瀏覽…", command=self._pick_src).grid(row=0, column=2, **pad)
-        ttk.Checkbutton(top, text="包含子資料夾", variable=self.v_rec).grid(row=0, column=3, **pad)
+        ttk.Button(top, text=T("browse"), command=self._pick_src).grid(row=0, column=2, **pad)
+        ttk.Checkbutton(top, text=T("include_sub"), variable=self.v_rec).grid(row=0, column=3, **pad)
 
-        ttk.Label(top, text="分類結果").grid(row=1, column=0, sticky="w", **pad)
-        ttk.Label(top, text=f"複製到照片資料夾內的「{SHARP_DIR}」與「{BLUR_DIR}」資料夾，原始照片完全不會移動或修改",
+        ttk.Label(top, text=T("result_label")).grid(row=1, column=0, sticky="w", **pad)
+        ttk.Label(top, text=T("result_desc", sharp=T("sharp_dir"), blur=T("blur_dir")),
                   foreground="#555").grid(row=1, column=1, columnspan=3, sticky="w", **pad)
 
         # --- 門檻
-        th = ttk.LabelFrame(self, text="判斷門檻（調整後立即重新判定，不需重新分析）")
+        th = ttk.LabelFrame(self, text=T("th_frame"))
         th.pack(fill="x", padx=8, pady=4)
 
         self.v_mode = tk.StringVar(value=self.cfg["mode"])
         mf = ttk.Frame(th)
         mf.grid(row=0, column=0, rowspan=2, sticky="nw", padx=6, pady=4)
-        ttk.Radiobutton(mf, text="相對門檻（建議）", value="relative", variable=self.v_mode,
+        ttk.Radiobutton(mf, text=T("th_relative"), value="relative", variable=self.v_mode,
                         command=self._mode_changed).pack(anchor="w")
-        ttk.Label(mf, text="分數低於本批較清楚照片的 X%\n就判定為模糊", foreground="#777").pack(anchor="w", padx=(20, 0))
-        ttk.Radiobutton(mf, text="絕對門檻", value="absolute", variable=self.v_mode,
+        ttk.Label(mf, text=T("th_relative_desc"), foreground="#777").pack(anchor="w", padx=(20, 0))
+        ttk.Radiobutton(mf, text=T("th_absolute"), value="absolute", variable=self.v_mode,
                         command=self._mode_changed).pack(anchor="w", pady=(6, 0))
 
         self.v_face = tk.DoubleVar()
@@ -361,14 +382,14 @@ class App(tk.Tk):
         self.lbl_face = ttk.Label(th, width=40)
         self.lbl_tile = ttk.Label(th, width=40)
 
-        ttk.Label(th, text="有人臉的照片").grid(row=0, column=1, sticky="w", padx=6)
+        ttk.Label(th, text=T("th_face")).grid(row=0, column=1, sticky="w", padx=6)
         self.sc_face = ttk.Scale(th, variable=self.v_face, command=lambda e: self._slider_moved())
         self.sc_face.grid(row=0, column=2, sticky="ew", padx=6)
         self.sp_face = ttk.Spinbox(th, textvariable=self.v_face, width=7, command=self._recalc)
         self.sp_face.grid(row=0, column=3, padx=4)
         self.lbl_face.grid(row=0, column=4, sticky="w", padx=6)
 
-        ttk.Label(th, text="無人臉的照片").grid(row=1, column=1, sticky="w", padx=6)
+        ttk.Label(th, text=T("th_tile")).grid(row=1, column=1, sticky="w", padx=6)
         self.sc_tile = ttk.Scale(th, variable=self.v_tile, command=lambda e: self._slider_moved())
         self.sc_tile.grid(row=1, column=2, sticky="ew", padx=6)
         self.sp_tile = ttk.Spinbox(th, textvariable=self.v_tile, width=7, command=self._recalc)
@@ -383,22 +404,22 @@ class App(tk.Tk):
         # --- 操作列
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=8, pady=4)
-        self.btn_start = ttk.Button(bar, text="① 開始分析", style="Big.TButton", command=self._start)
+        self.btn_start = ttk.Button(bar, text=T("start"), style="Big.TButton", command=self._start)
         self.btn_start.pack(side="left")
-        self.btn_stop = ttk.Button(bar, text="停止", command=self._stop, state="disabled")
+        self.btn_stop = ttk.Button(bar, text=T("stop"), command=self._stop, state="disabled")
         self.btn_stop.pack(side="left", padx=4)
 
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=10)
         self.v_side = tk.BooleanVar(value=self.cfg["sidecar"])
-        ttk.Checkbutton(bar, text="連同同名 RAW / XMP 檔", variable=self.v_side).pack(side="left")
-        self.btn_move = ttk.Button(bar, text=f"② 複製到「{SHARP_DIR}」「{BLUR_DIR}」",
+        ttk.Checkbutton(bar, text=T("sidecar"), variable=self.v_side).pack(side="left")
+        self.btn_move = ttk.Button(bar, text=T("copy_btn", sharp=T("sharp_dir"), blur=T("blur_dir")),
                                    style="Big.TButton", command=self._do_copy)
         self.btn_move.pack(side="left", padx=6)
-        self.btn_undo = ttk.Button(bar, text="刪除上次複製的檔案", command=self._undo, state="disabled")
+        self.btn_undo = ttk.Button(bar, text=T("undo_btn"), command=self._undo, state="disabled")
         self.btn_undo.pack(side="left", padx=4)
 
-        ttk.Button(bar, text="匯出 CSV", command=self._export_csv).pack(side="right")
-        ttk.Button(bar, text="開啟照片資料夾", command=self._open_dst).pack(side="right", padx=4)
+        ttk.Button(bar, text=T("export_csv"), command=self._export_csv).pack(side="right")
+        ttk.Button(bar, text=T("open_folder"), command=self._open_dst).pack(side="right", padx=4)
 
         # --- 主區：清單 + 預覽
         pw = ttk.PanedWindow(self, orient="horizontal")
@@ -407,19 +428,21 @@ class App(tk.Tk):
         left = ttk.Frame(pw)
         fl = ttk.Frame(left)
         fl.pack(fill="x", pady=(0, 4))
-        ttk.Label(fl, text="顯示").pack(side="left")
-        self.v_filter = tk.StringVar(value="全部")
-        cb = ttk.Combobox(fl, textvariable=self.v_filter, values=FILTERS, width=8, state="readonly")
+        ttk.Label(fl, text=T("show")).pack(side="left")
+        self.v_filter = tk.StringVar(value=T(self._filter_key))
+        cb = ttk.Combobox(fl, textvariable=self.v_filter, values=[T(k) for k in FILTER_KEYS],
+                          width=10, state="readonly")
         cb.pack(side="left", padx=4)
-        cb.bind("<<ComboboxSelected>>", lambda e: self._refresh_tree())
-        ttk.Label(fl, text="雙擊或按空白鍵：手動切換 模糊 / 清楚", foreground="#777").pack(side="left", padx=10)
+        cb.bind("<<ComboboxSelected>>", lambda e: self._filter_selected())
+        ttk.Label(fl, text=T("toggle_hint"), foreground="#777").pack(side="left", padx=10)
 
         cols = ("name", "score", "method", "faces", "verdict")
         self.tree = ttk.Treeview(left, columns=cols, show="headings", selectmode="extended")
-        heads = {"name": ("檔名", 300, "w"), "score": ("清晰度", 80, "e"), "method": ("判斷方式", 90, "center"),
-                 "faces": ("人臉", 50, "center"), "verdict": ("判定", 90, "center")}
-        for c, (t, w, a) in heads.items():
-            self.tree.heading(c, text=t, command=lambda c=c: self._sort_by(c))
+        heads = {"name": ("col_name", 300, "w"), "score": ("col_score", 80, "e"),
+                 "method": ("col_method", 95, "center"), "faces": ("col_faces", 50, "center"),
+                 "verdict": ("col_verdict", 135, "center")}
+        for c, (k, w, a) in heads.items():
+            self.tree.heading(c, text=T(k), command=lambda c=c: self._sort_by(c))
             self.tree.column(c, width=w, anchor=a, stretch=(c == "name"))
         self.tree.tag_configure("blur", foreground="#c62828")
         self.tree.tag_configure("manual", background="#fff8e1")
@@ -437,16 +460,16 @@ class App(tk.Tk):
         right = ttk.Frame(pw)
         zb = ttk.Frame(right)
         zb.pack(fill="x", pady=(0, 4))
-        ttk.Label(zb, text="顯示比例").pack(side="left")
+        ttk.Label(zb, text=T("zoom")).pack(side="left")
         ttk.Button(zb, text="－", width=3, command=lambda: self._zoom_step(-1)).pack(side="left", padx=(6, 0))
-        self.v_zoom = tk.StringVar(value=self.cfg.get("zoom", ZOOM_FIT))
-        self.cb_zoom = ttk.Combobox(zb, textvariable=self.v_zoom, values=ZOOM_CHOICES, width=9)
+        self.v_zoom = tk.StringVar(value=self._zoom_label(self.cfg.get("zoom", ZOOM_FIT)))
+        self.cb_zoom = ttk.Combobox(zb, textvariable=self.v_zoom, values=[T("zoom_fit")] + ZOOM_PCTS, width=9)
         self.cb_zoom.pack(side="left", padx=2)
         self.cb_zoom.bind("<<ComboboxSelected>>", lambda e: self._zoom_changed())
         self.cb_zoom.bind("<Return>", lambda e: self._zoom_changed())
         self.cb_zoom.bind("<FocusOut>", lambda e: self._zoom_changed())
         ttk.Button(zb, text="＋", width=3, command=lambda: self._zoom_step(1)).pack(side="left")
-        ttk.Button(zb, text="符合視窗", command=lambda: self._set_zoom(ZOOM_FIT)).pack(side="left", padx=(6, 0))
+        ttk.Button(zb, text=T("zoom_fit"), command=lambda: self._set_zoom(ZOOM_FIT)).pack(side="left", padx=(6, 0))
         ttk.Button(zb, text="100%", command=lambda: self._set_zoom("100%")).pack(side="left", padx=2)
         self.lbl_zoom = ttk.Label(zb, foreground="#777")
         self.lbl_zoom.pack(side="left", padx=8)
@@ -469,9 +492,7 @@ class App(tk.Tk):
         self.canvas.bind("<MouseWheel>", self._pv_wheel)                     # Windows
         self.canvas.bind("<Button-4>", lambda e: self._pv_wheel(e, 120))    # Linux
         self.canvas.bind("<Button-5>", lambda e: self._pv_wheel(e, -120))
-        self.lbl_info = ttk.Label(right, text=("選擇左側照片即可預覽。綠框＝清楚的臉，紅框＝模糊的臉，灰框＝次要人臉。\n"
-                                              "拖曳移動畫面；Ctrl＋滾輪縮放；雙擊在「符合視窗」與 100% 間切換。"),
-                                  wraplength=460, justify="left")
+        self.lbl_info = ttk.Label(right, text=T("preview_hint"), wraplength=460, justify="left")
         self.lbl_info.pack(fill="x", pady=4)
         pw.add(right, weight=2)
 
@@ -480,12 +501,59 @@ class App(tk.Tk):
         sb.pack(fill="x", padx=8, pady=(0, 8))
         self.pb = ttk.Progressbar(sb, mode="determinate", length=260)
         self.pb.pack(side="left")
-        self.lbl_status = ttk.Label(sb, text="請選擇照片資料夾，然後按「開始分析」。")
+        self.lbl_status = ttk.Label(sb, text=T("status_ready"))
         self.lbl_status.pack(side="left", padx=10)
+        self._building = False
+
+    # ------------------------------------------------------------ 語言
+    def _lang_selected(self):
+        name = self.v_lang.get()
+        lang = next((k for k, v in LANG_NAMES.items() if v == name), "en")
+        if lang != get_lang():
+            self._switch_lang(lang)
+
+    def _switch_lang(self, lang: str):
+        """立即切換語言：記下目前狀態 → 重建整個介面 → 還原狀態（分析結果不會遺失）"""
+        self._sync_cfg()
+        sel = list(self.tree.selection())
+        pv_path = self._preview_path
+        pb_max, pb_val = self.pb.cget("maximum"), self.pb.cget("value")
+        self.cfg["lang"] = lang
+        set_lang(lang)
+        self.title(f"{app_name()} v{APP_VER}")
+        self._release_preview()
+        for w in self.winfo_children():
+            w.destroy()
+        self._build_ui()
+        # 還原狀態
+        self.pb.configure(maximum=pb_max, value=pb_val)
+        running = self.worker is not None and self.worker.is_alive()
+        if running:
+            self.btn_start.configure(state="disabled"); self.btn_stop.configure(state="normal")
+            self.btn_move.configure(state="disabled")
+        self.btn_undo.configure(state="normal" if self.last_log else "disabled")
+        self._recalc()
+        keep = [p for p in sel if self.tree.exists(p)]
+        if keep:
+            self.tree.selection_set(keep)
+            self.tree.see(keep[0])
+            if pv_path in keep:
+                self.after(50, lambda: self._show_preview(force=True))
+        elif not self.order:
+            self.lbl_status.configure(text=T("status_ready"))
+
+    def _sync_cfg(self):
+        self.cfg.update(src=self.v_src.get(), recursive=self.v_rec.get(),
+                        mode=self.v_mode.get(), sidecar=self.v_side.get())
+
+    def _filter_selected(self):
+        label = self.v_filter.get()
+        self._filter_key = next((k for k in FILTER_KEYS if T(k) == label), "f_all")
+        self._refresh_tree()
 
     # ------------------------------------------------------------ 資料夾
     def _pick_src(self):
-        d = filedialog.askdirectory(title="選擇照片資料夾", initialdir=self.v_src.get() or None)
+        d = filedialog.askdirectory(title=T("pick_folder_title"), initialdir=self.v_src.get() or None)
         if d:
             self.v_src.set(os.path.normpath(d))
 
@@ -504,11 +572,11 @@ class App(tk.Tk):
         except Exception:
             # 開不了瀏覽器時，把網址複製到剪貼簿
             self.clipboard_clear(); self.clipboard_append(url)
-            messagebox.showinfo(APP_NAME, f"無法自動開啟瀏覽器，網址已複製到剪貼簿：\n{url}")
+            messagebox.showinfo(app_name(), T("browser_fail", url=url))
 
     def _out_dirs(self) -> list:
         src = self.v_src.get().strip()
-        return [os.path.join(src, d) for d in (SHARP_DIR, BLUR_DIR) + LEGACY_DIRS] if src else []
+        return [os.path.join(src, d) for d in output_dir_names()] if src else []
 
     def _open_dst(self):
         d = self.v_src.get().strip()
@@ -572,13 +640,14 @@ class App(tk.Tk):
         nf = sum(1 for r in res if r.ok and r.method == "face")
         nt = sum(1 for r in res if r.ok and r.method == "tile")
         if mode == "relative":
-            self.lbl_face.configure(text=f"{fv:.0f}%  → 分數門檻 {self.face_th:.1f}（{nf} 張）")
-            self.lbl_tile.configure(text=f"{tv:.0f}%  → 分數門檻 {self.tile_th:.1f}（{nt} 張）")
+            self.lbl_face.configure(text=T("th_rel_info", pct=fv, th=self.face_th, n=nf))
+            self.lbl_tile.configure(text=T("th_rel_info", pct=tv, th=self.tile_th, n=nt))
         else:
-            self.lbl_face.configure(text=f"分數 < {fv:.1f} 判定模糊（{nf} 張）")
-            self.lbl_tile.configure(text=f"分數 < {tv:.1f} 判定模糊（{nt} 張）")
-        if hasattr(self, "tree"):
+            self.lbl_face.configure(text=T("th_abs_info", th=fv, n=nf))
+            self.lbl_tile.configure(text=T("th_abs_info", th=tv, n=nt))
+        if not self._building and hasattr(self, "tree"):
             self._refresh_tree()
+            self._pv_info()
 
     def _verdict(self, path: str) -> bool | None:
         r = self.results.get(path)
@@ -592,11 +661,11 @@ class App(tk.Tk):
     def _start(self):
         src = self.v_src.get().strip()
         if not src or not os.path.isdir(src):
-            messagebox.showwarning(APP_NAME, "請先選擇有效的照片資料夾。")
+            messagebox.showwarning(app_name(), T("need_folder"))
             return
         files = fa.list_images(src, self.v_rec.get(), skip_dirs=self._out_dirs())
         if not files:
-            messagebox.showinfo(APP_NAME, "這個資料夾裡沒有找到照片（JPG / PNG / TIF / WEBP）。")
+            messagebox.showinfo(app_name(), T("no_photos"))
             return
         self.results.clear(); self.order.clear(); self.override.clear(); self.done_paths.clear()
         self.tree.delete(*self.tree.get_children())
@@ -629,7 +698,7 @@ class App(tk.Tk):
     def _stop(self):
         self.stop_flag.set()
         self.btn_stop.configure(state="disabled")
-        self.lbl_status.configure(text="正在停止…")
+        self.lbl_status.configure(text=T("status_stopping"))
 
     def _poll(self):
         changed = False
@@ -663,35 +732,35 @@ class App(tk.Tk):
         r = self.results[p]
         name = os.path.relpath(p, self.v_src.get()) if self.v_rec.get() else os.path.basename(p)
         if not r.ok:
-            return (name, "-", "讀取失敗", "-", "錯誤"), ("err",)
+            return (name, "-", T("v_read_fail"), "-", T("v_error")), ("err",)
         v = self._verdict(p)
-        method = "人臉／眼部" if r.method == "face" else "分區"
+        method = T("m_face") if r.method == "face" else T("m_tile")
         faces = str(len(r.faces)) if r.faces else "-"
         if p in self.done_paths:
-            verdict, tags = f"已複製→{self.done_paths[p]}", ("done",)
+            verdict, tags = T("v_done", folder=self.done_paths[p]), ("done",)
         else:
-            verdict = "模糊" if v else "清楚"
+            verdict = T("v_blur") if v else T("v_sharp")
             tags = ("blur",) if v else ()
             if p in self.override:
-                verdict += "（手動）"
+                verdict += T("v_manual")
                 tags = tags + ("manual",)
         return (name, f"{r.score:.1f}", method, faces, verdict), tags
 
     def _match_filter(self, p, flt):
         r = self.results[p]
-        if flt == "全部":
+        if flt == "f_all":
             return True
-        if flt == "錯誤":
+        if flt == "f_err":
             return not r.ok
-        if flt == "已複製":
+        if flt == "f_done":
             return p in self.done_paths
         if not r.ok or p in self.done_paths:
             return False
         v = self._verdict(p)
-        return v if flt == "模糊" else not v
+        return v if flt == "f_blur" else not v
 
     def _refresh_tree(self):
-        flt = self.v_filter.get()
+        flt = self._filter_key
         sel = set(self.tree.selection())
         want = [p for p in self.order if self._match_filter(p, flt)]
         existing = set(self.tree.get_children())
@@ -734,6 +803,7 @@ class App(tk.Tk):
             else:
                 self.override[p] = new
         self._refresh_tree()
+        self._pv_info()
         return "break"
 
     def _update_status(self):
@@ -742,15 +812,18 @@ class App(tk.Tk):
         sharp = sum(1 for p in self.order if self._verdict(p) is False)
         err = sum(1 for p in self.order if not self.results[p].ok)
         running = self.worker is not None and self.worker.is_alive()
-        head = f"分析中 {n}/{self.total}" if running else f"共 {n} 張"
-        txt = f"{head}　｜　清楚 {sharp} 張　｜　模糊 {blur} 張"
+        if not n and not running:
+            self.lbl_status.configure(text=T("status_ready"))
+            return
+        parts = [T("st_running", n=n, total=self.total) if running else T("st_total", n=n),
+                 T("st_counts", sharp=sharp, blur=blur)]
         if self.done_paths:
-            txt += f"　｜　已複製 {len(self.done_paths)} 張"
+            parts.append(T("st_done", n=len(self.done_paths)))
         if err:
-            txt += f"　｜　讀取失敗 {err} 張"
+            parts.append(T("st_err", n=err))
         if self.override:
-            txt += f"　｜　手動修正 {len(self.override)} 張"
-        self.lbl_status.configure(text=txt)
+            parts.append(T("st_manual", n=len(self.override)))
+        self.lbl_status.configure(text=T("st_sep").join(parts))
 
     # ------------------------------------------------------------ 預覽
     # 座標說明：
@@ -758,10 +831,19 @@ class App(tk.Tk):
     #   「畫布座標」＝原圖座標 × 顯示比例 s，圖片左上角在 (0, 0)
     #   畫面只算出「目前看得到的那一塊」，所以 300% 放大大圖也不會吃光記憶體
 
+    @staticmethod
+    def _zoom_label(value: str) -> str:
+        """設定值 → 畫面顯示文字"""
+        return T("zoom_fit") if value == ZOOM_FIT else value
+
+    @staticmethod
+    def _is_fit(v: str) -> bool:
+        return (not v) or v == ZOOM_FIT or v in all_values("zoom_fit")
+
     def _zoom_percent(self):
         """回傳使用者設定的比例（%），符合視窗時回傳 None"""
         v = self.v_zoom.get().strip().replace("％", "%")
-        if v == ZOOM_FIT or not v:
+        if self._is_fit(v):
             return None
         try:
             return max(ZOOM_MIN, min(ZOOM_MAX, float(v.rstrip("%").strip())))
@@ -790,7 +872,7 @@ class App(tk.Tk):
         self._pv_res = None
         self._pv_cache = None
         if r is None or not r.ok or not os.path.exists(p):
-            self.lbl_info.configure(text=(r.error if r and not r.ok else "檔案不存在"))
+            self.lbl_info.configure(text=(error_text(r.error) if r and not r.ok else T("file_missing")))
             return
         self._pv_res = r
         # 放大檢視時，畫面中心對準最清楚的主要人臉，方便直接看對焦
@@ -802,15 +884,20 @@ class App(tk.Tk):
             focus = (r.width / 2, r.height / 2)
         self._pv_focus = focus
         self._pv_layout(anchor=focus, screen=None)
+        self._pv_info()
 
+    def _pv_info(self):
+        """預覽下方的說明文字（判定改變時也會呼叫）"""
+        p, r = self._preview_path, self._pv_res
+        if r is None or p is None:
+            return
         v = self._verdict(p)
         th = self.face_th if r.method == "face" else self.tile_th
-        how = (f"人臉 {len(r.faces)} 張（取主要人臉中最清楚的一張）" if r.method == "face"
-               else "未偵測到人臉，使用分區判斷（取最清楚的區塊）")
+        how = T("pv_how_face", n=len(r.faces)) if r.method == "face" else T("pv_how_tile")
+        verdict = (T("v_blur") if v else T("v_sharp")) + (T("v_manual") if p in self.override else "")
         self.lbl_info.configure(text=(
-            f"{os.path.basename(p)}　{r.width}×{r.height}\n"
-            f"清晰度 {r.score:.1f}　門檻 {th:.1f}　→　{'模糊' if v else '清楚'}"
-            f"{'（手動）' if p in self.override else ''}\n{how}"))
+            f"{os.path.basename(p)}   {r.width}×{r.height}\n"
+            + T("pv_score", score=r.score, th=th, verdict=verdict) + f"\n{how}"))
 
     def _pv_source(self, need_full: bool):
         """取得解碼後的圖；需要時才解碼原始解析度，並快取同一張圖"""
@@ -870,7 +957,7 @@ class App(tk.Tk):
                                         font=("Arial", fsize, "bold"), tags="face")
 
         z = self._zoom_percent()
-        self.lbl_zoom.configure(text=f"目前 {s * 100:.0f}%" + ("（符合視窗）" if z is None else ""))
+        self.lbl_zoom.configure(text=T("zoom_now", pct=s * 100) + (T("zoom_now_fit") if z is None else ""))
         self._pv_render()
 
     def _pv_render(self):
@@ -892,7 +979,7 @@ class App(tk.Tk):
             need_full = s > (self._pv_fit_scale() * 1.5)
             im = self._pv_source(need_full)
         except Exception as e:
-            self.lbl_info.configure(text=f"預覽失敗：{e}")
+            self.lbl_info.configure(text=T("preview_fail", e=e))
             return
         k = im.width / float(r.width)          # 載入的圖 相對 原圖 的比例
         box = (ix0 / s * k, iy0 / s * k, ix1 / s * k, iy1 / s * k)
@@ -956,20 +1043,20 @@ class App(tk.Tk):
 
     def _set_zoom(self, value: str, at=None):
         if self._pv_res is None or not getattr(self, "_pv_s", None):
-            self.v_zoom.set(value)
+            self.v_zoom.set(self._zoom_label(value))
             self._zoom_changed()
             return
         if at is None:
             at = (self.canvas.winfo_width() / 2, self.canvas.winfo_height() / 2)
             # 從「符合視窗」放大時，直接對準最清楚的臉（雙眼位置）
             if self._zoom_percent() is None and value != ZOOM_FIT:
-                self.v_zoom.set(value)
+                self.v_zoom.set(self._zoom_label(value))
                 self.cfg["zoom"] = value
                 self._pv_layout(anchor=self._pv_focus, screen=at)
                 return
         s = self._pv_s
         anchor = (self.canvas.canvasx(at[0]) / s, self.canvas.canvasy(at[1]) / s)
-        self.v_zoom.set(value)
+        self.v_zoom.set(self._zoom_label(value))
         self.cfg["zoom"] = value
         self._pv_layout(anchor=anchor, screen=at)
 
@@ -986,11 +1073,11 @@ class App(tk.Tk):
         was_fit = self.cfg.get("zoom", ZOOM_FIT) == ZOOM_FIT
         v = self.v_zoom.get().strip()
         z = self._zoom_percent()
-        if z is None and v not in (ZOOM_FIT, ""):
-            self.v_zoom.set(self.cfg.get("zoom", ZOOM_FIT))   # 輸入格式不對就還原
+        if z is None and not self._is_fit(v):
+            self.v_zoom.set(self._zoom_label(self.cfg.get("zoom", ZOOM_FIT)))   # 輸入格式不對就還原
             return
         val = ZOOM_FIT if z is None else f"{z:g}%"
-        self.v_zoom.set(val)
+        self.v_zoom.set(self._zoom_label(val))
         self.cfg["zoom"] = val
         if self._pv_res is not None and getattr(self, "_pv_s", None):
             anchor = self._pv_focus if (was_fit and z is not None) else self._pv_view_center()
@@ -1042,19 +1129,18 @@ class App(tk.Tk):
         src_root = self.v_src.get().strip()
         targets = [p for p in self.order if p not in self.done_paths and self._verdict(p) is not None]
         if not targets:
-            messagebox.showinfo(APP_NAME, "沒有需要複製的照片（可能都已經複製過了）。")
+            messagebox.showinfo(app_name(), T("nothing_to_copy"))
             return
         n_blur = sum(1 for p in targets if self._verdict(p))
         n_sharp = len(targets) - n_blur
-        if not messagebox.askyesno(APP_NAME, (
-                f"將複製到照片資料夾內：\n\n"
-                f"　「{SHARP_DIR}」　{n_sharp} 張\n　「{BLUR_DIR}」　{n_blur} 張\n\n"
-                f"原始照片不會移動或修改。確定執行？")):
+        sharp_dir, blur_dir = T("sharp_dir"), T("blur_dir")
+        if not messagebox.askyesno(app_name(), T("confirm_copy", sharp=sharp_dir, blur=blur_dir,
+                                                 n_sharp=n_sharp, n_blur=n_blur)):
             return
         self._release_preview()
         log, errors, skipped = [], [], 0
         for p in targets:
-            folder = BLUR_DIR if self._verdict(p) else SHARP_DIR
+            folder = blur_dir if self._verdict(p) else sharp_dir
             dst_root = os.path.join(src_root, folder)
             files = [p] + (self._sidecars(p) if self.v_side.get() else [])
             main_ok = False
@@ -1069,12 +1155,12 @@ class App(tk.Tk):
                     else:
                         dst = unique_path(dst)
                         copy_file(f, dst)
-                        log.append(("複製", f, dst))
+                        log.append((T("log_copy"), f, dst))
                     if f == p:
                         main_ok = True
                 except Exception as e:
                     log_error("copy", f, e)
-                    errors.append(f"{os.path.basename(f)}：{explain_error(e, f)}")
+                    errors.append(os.path.basename(f) + T("colon") + explain_error(e, f))
                     if f == p:
                         break
             if main_ok:
@@ -1084,24 +1170,24 @@ class App(tk.Tk):
         self._write_log(src_root, log)
         self._preview_path = None
         self._refresh_tree()
-        msg = f"完成！已複製 {len(log)} 個檔案。"
+        msg = T("copy_done", n=len(log))
         if skipped:
-            msg += f"\n（{skipped} 個檔案已存在，略過）"
+            msg += T("copy_skipped", n=skipped)
         if errors:
-            msg += f"\n\n有 {len(errors)} 個檔案失敗：\n" + "\n".join(errors[:10])
-            msg += f"\n\n詳細紀錄：{os.path.join(SETTINGS_DIR, 'error.log')}"
-        messagebox.showinfo(APP_NAME, msg)
+            msg += T("copy_errors", n=len(errors)) + "\n".join(errors[:10])
+            msg += T("error_log_at", path=os.path.join(SETTINGS_DIR, "error.log"))
+        messagebox.showinfo(app_name(), msg)
 
     def _write_log(self, dst_root, log):
         if not log:
             return
         try:
-            path = os.path.join(dst_root, "_分類紀錄.csv")
+            path = os.path.join(dst_root, T("log_file"))
             new = not os.path.exists(path)
             with open(path, "a", newline="", encoding="utf-8-sig") as f:
                 w = csv.writer(f)
                 if new:
-                    w.writerow(["動作", "原始位置", "新位置"])
+                    w.writerow(T("log_headers"))
                 w.writerows(log)
         except Exception:
             pass
@@ -1109,9 +1195,8 @@ class App(tk.Tk):
     def _undo(self):
         if not self.last_log:
             return
-        if not messagebox.askyesno(APP_NAME, (
-                f"要刪除上次複製出來的 {len(self.last_log)} 個檔案嗎？\n"
-                f"（只刪除「{SHARP_DIR}」「{BLUR_DIR}」裡的複本，原始照片不受影響）")):
+        if not messagebox.askyesno(app_name(), T("confirm_undo", n=len(self.last_log),
+                                                 sharp=T("sharp_dir"), blur=T("blur_dir"))):
             return
         self._release_preview()
         errors, restored = [], set()
@@ -1123,7 +1208,7 @@ class App(tk.Tk):
                 restored.add(src)
             except Exception as e:
                 log_error("undo", dst, e)
-                errors.append(f"{os.path.basename(dst)}：{explain_error(e, dst)}")
+                errors.append(os.path.basename(dst) + T("colon") + explain_error(e, dst))
         for p in list(self.done_paths):
             if p in restored:
                 del self.done_paths[p]
@@ -1131,36 +1216,36 @@ class App(tk.Tk):
         self.btn_undo.configure(state="disabled")
         self._preview_path = None
         self._refresh_tree()
-        msg = "已刪除上次複製的檔案。"
+        msg = T("undo_done")
         if errors:
-            msg += f"\n\n有 {len(errors)} 個刪除失敗，可自行到資料夾刪除：\n" + "\n".join(errors[:10])
-        messagebox.showinfo(APP_NAME, msg)
+            msg += T("undo_errors", n=len(errors)) + "\n".join(errors[:10])
+        messagebox.showinfo(app_name(), msg)
 
     # ------------------------------------------------------------ 其他
     def _export_csv(self):
         if not self.order:
-            messagebox.showinfo(APP_NAME, "請先分析照片。")
+            messagebox.showinfo(app_name(), T("analyze_first"))
             return
-        path = filedialog.asksaveasfilename(title="匯出分析結果", defaultextension=".csv",
-                                            initialfile="清晰度分析.csv", filetypes=[("CSV", "*.csv")])
+        path = filedialog.asksaveasfilename(title=T("export_title"), defaultextension=".csv",
+                                            initialfile=T("export_file"), filetypes=[("CSV", "*.csv")])
         if not path:
             return
         with open(path, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
-            w.writerow(["檔案", "清晰度", "判斷方式", "人臉數", "判定", "手動修正", "已複製到", "錯誤"])
+            w.writerow(T("csv_headers"))
             for p in self.order:
                 r = self.results[p]
                 v = self._verdict(p)
-                w.writerow([p, r.score if r.ok else "", "人臉" if r.method == "face" else "分區",
-                            len(r.faces), "" if v is None else ("模糊" if v else "清楚"),
-                            "是" if p in self.override else "", self.done_paths.get(p, ""), r.error])
-        messagebox.showinfo(APP_NAME, "已匯出。")
+                w.writerow([p, r.score if r.ok else "", T("csv_face") if r.method == "face" else T("csv_tile"),
+                            len(r.faces), "" if v is None else (T("v_blur") if v else T("v_sharp")),
+                            T("csv_yes") if p in self.override else "", self.done_paths.get(p, ""),
+                            error_text(r.error)])
+        messagebox.showinfo(app_name(), T("exported"))
 
     def _on_close(self):
         self.stop_flag.set()
-        self.cfg.update(src=self.v_src.get(), recursive=self.v_rec.get(),
-                        mode=self.v_mode.get(), sidecar=self.v_side.get(),
-                        geometry=self.geometry())
+        self._sync_cfg()
+        self.cfg["geometry"] = self.geometry()
         save_settings(self.cfg)
         self.destroy()
 

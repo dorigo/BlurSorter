@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <b>中文</b> ｜ <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-0078D6">
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-3776AB">
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue">
@@ -30,6 +34,7 @@
 - **相對門檻**：以同一批照片中較清楚的那些為基準，自動適應不同相機與光線，通常不用調整。
 - **先看再分**：可即時調整門檻、逐張預覽（最高 800% 放大、自動對準眼睛），也能手動修正判定。
 - **RAW / XMP 一起分類**：同名的 `.CR3`、`.NEF`、`.ARW`、`.xmp` 等檔案會跟著 JPG 一起複製。
+- **中文 / English 介面**：右上角即可切換，立即生效，分析結果不會遺失。英文模式的資料夾名稱為 `Sharp` / `Blurry`。
 - **完全離線**：所有分析都在本機完成，照片不會上傳到任何地方。
 
 ## 下載與使用
@@ -102,12 +107,16 @@ Windows 的「受控資料夾存取」（勒索軟體防護）會保護桌面、
 **支援哪些格式？**
 分析支援 JPG、PNG、TIF、BMP、WEBP。RAW 檔本身不分析，但勾選「連同同名 RAW / XMP 檔」後會跟著同名的 JPG 一起分類。
 
+**可以加入其他語言嗎？**
+可以。在 `i18n.py` 的 `STRINGS` 加一組新的語言（例如 `"ja"`），翻譯每個項目，再把名稱加進 `LANG_NAMES` 即可。歡迎發 Pull Request。
+
 ## 專案結構
 
 ```
 BlurSorter/
 ├── blur_sorter.py        主程式（tkinter 視窗介面）
 ├── focus_analyzer.py     清晰度分析核心
+├── i18n.py               介面文字（中文 / English），新增語言只要改這個檔案
 ├── models/
 │   └── face_detection_yunet_2023mar.onnx   人臉偵測模型（MIT）
 ├── icon.png / icon.ico   程式圖示

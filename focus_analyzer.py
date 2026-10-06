@@ -117,7 +117,7 @@ def load_image(path: str) -> np.ndarray:
     flags = cv2.IMREAD_COLOR | getattr(cv2, "IMREAD_IGNORE_ORIENTATION", 128)
     img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), flags)
     if img is None:
-        raise ValueError("無法讀取圖片")
+        raise ValueError("decode_failed")   # 介面會依語言顯示對應文字
     return _apply_orientation(img, _exif_orientation(data))
 
 
