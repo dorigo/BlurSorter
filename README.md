@@ -102,19 +102,12 @@ Windows 的「受控資料夾存取」（勒索軟體防護）會保護桌面、
 **支援哪些格式？**
 分析支援 JPG、PNG、TIF、BMP、WEBP。RAW 檔本身不分析，但勾選「連同同名 RAW / XMP 檔」後會跟著同名的 JPG 一起分類。
 
-**設定和錯誤紀錄存在哪裡？**
-`%LOCALAPPDATA%\BlurSorter\` 底下的 `settings.json` 與 `error.log`。
-
-**檔案總管還是顯示舊圖示？**
-這是 Windows 圖示快取，把 exe 改個檔名或重新開機即可更新。
-
 ## 專案結構
 
 ```
 BlurSorter/
 ├── blur_sorter.py        主程式（tkinter 視窗介面）
 ├── focus_analyzer.py     清晰度分析核心
-├── make_icon.py          打包時把 icon.png 轉成 icon.ico
 ├── models/
 │   └── face_detection_yunet_2023mar.onnx   人臉偵測模型（MIT）
 ├── icon.png / icon.ico   程式圖示
@@ -122,17 +115,6 @@ BlurSorter/
 ├── run.bat               不打包直接執行
 └── requirements.txt
 ```
-
-## 發布新版本（維護者）
-
-把 `blur_sorter.py` 裡的 `APP_VER` 改成新版本號（例如 `"2.5"`），推送到 `main` 即可。
-GitHub Actions 會自動在 Windows 上打包 `BlurSorter.exe`，建立 `v2.5` 標籤與 Release 並附上 exe。
-
-## 更換程式圖示
-
-把正方形圖片（建議 256×256 以上，可透明背景）命名為 `icon.png` 覆蓋原檔，重新執行 `build.bat` 即可，會自動套用到 exe、視窗與工作列。
-
-> 如果你 fork 本專案並重新發布，請換成你自己的圖示 —— 預設圖示是作者的個人形象，不在 GPL 授權範圍內。
 
 ## 授權
 
