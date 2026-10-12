@@ -149,6 +149,6 @@ BlurSorter/
 
 由 **Dorigo** 開發 —— [dorigo-image.com](https://dorigo-image.com)
 
-如果這個工具幫你省下挑照片的時間，歡迎 [請我喝杯咖啡 ☕](https://www.paypal.com/ncp/payment/ATJ3PTJAC8RC6)
+如果這個工具幫你省下挑照片的時間，歡迎 [請我喝杯咖啡 ☕](https://p.ecpay.com.tw/9EE4BD6)
 
 問題回報與功能建議，歡迎開 [Issue](../../issues)。

@@ -133,6 +133,6 @@ Third-party components and their licenses are listed in [THIRD_PARTY_NOTICES.md]
 
 Made by **Dorigo** — [dorigo-image.com](https://dorigo-image.com)
 
-If BlurSorter saves you time culling photos, you can [buy me a coffee ☕](https://www.paypal.com/ncp/payment/ATJ3PTJAC8RC6)
+If BlurSorter saves you time culling photos, you can [buy me a coffee ☕](https://p.ecpay.com.tw/9EE4BD6)
 
 Bug reports and feature requests are welcome in [Issues](../../issues).

@@ -37,8 +37,8 @@ from PIL import Image, ImageOps, ImageTk, ImageDraw
 import focus_analyzer as fa
 from i18n import T, set_lang, get_lang, all_values, detect_default_lang, LANG_NAMES
 
-APP_VER = "2.5.2"
-SPONSOR_URL = "https://www.paypal.com/ncp/payment/ATJ3PTJAC8RC6"
+APP_VER = "2.5.3"
+SPONSOR_URL = "https://p.ecpay.com.tw/9EE4BD6"
 AUTHOR_URL = "https://dorigo-image.com"
 SETTINGS_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "BlurSorter")
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
