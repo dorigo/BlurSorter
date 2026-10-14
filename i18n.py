@@ -22,6 +22,7 @@ STRINGS = {
         "app_name": "失焦照片分類器",
         "sharp_dir": "清楚",
         "blur_dir": "模糊",
+        "noface_dir": "無人臉",
         "log_file": "_分類紀錄.csv",
 
         # 標題列
@@ -36,7 +37,7 @@ STRINGS = {
         "browse": "瀏覽…",
         "include_sub": "包含子資料夾",
         "result_label": "分類結果",
-        "result_desc": "複製到照片資料夾內的「{sharp}」與「{blur}」資料夾，原始照片完全不會移動或修改",
+        "result_desc": "複製到照片資料夾內的「{sharp}」「{blur}」（及「{noface}」）資料夾，原始照片完全不會移動或修改",
         "pick_folder_title": "選擇照片資料夾",
 
         # 門檻
@@ -53,6 +54,7 @@ STRINGS = {
         "start": "① 開始分析",
         "stop": "停止",
         "sidecar": "連同同名 RAW / XMP 檔",
+        "noface_opt": "無人臉照片另放「{noface}」",
         "copy_btn": "② 複製到「{sharp}」「{blur}」",
         "undo_btn": "刪除上次複製的檔案",
         "export_csv": "匯出 CSV",
@@ -98,14 +100,15 @@ STRINGS = {
         "no_photos": "這個資料夾裡沒有找到照片（JPG / PNG / TIF / WEBP）。",
         "nothing_to_copy": "沒有需要複製的照片（可能都已經複製過了）。",
         "confirm_copy": ("將複製到照片資料夾內：\n\n"
-                         "　「{sharp}」　{n_sharp} 張\n　「{blur}」　{n_blur} 張\n\n"
+                         "　「{sharp}」　{n_sharp} 張\n　「{blur}」　{n_blur} 張\n{noface_line}\n"
                          "原始照片不會移動或修改。確定執行？"),
+        "confirm_noface_line": "　「{noface}」　{n} 張（未偵測到人臉）\n",
         "copy_done": "完成！已複製 {n} 個檔案。",
         "copy_skipped": "\n（{n} 個檔案已存在，略過）",
         "copy_errors": "\n\n有 {n} 個檔案失敗：\n",
         "error_log_at": "\n\n詳細紀錄：{path}",
         "confirm_undo": ("要刪除上次複製出來的 {n} 個檔案嗎？\n"
-                         "（只刪除「{sharp}」「{blur}」裡的複本，原始照片不受影響）"),
+                         "（只刪除「{sharp}」「{blur}」「{noface}」裡的複本，原始照片不受影響）"),
         "undo_done": "已刪除上次複製的檔案。",
         "undo_errors": "\n\n有 {n} 個刪除失敗，可自行到資料夾刪除：\n",
         "analyze_first": "請先分析照片。",
@@ -142,6 +145,7 @@ STRINGS = {
         "app_name": "BlurSorter",
         "sharp_dir": "Sharp",
         "blur_dir": "Blurry",
+        "noface_dir": "No faces",
         "log_file": "_sort_log.csv",
 
         "language": "Language",
@@ -154,7 +158,7 @@ STRINGS = {
         "browse": "Browse…",
         "include_sub": "Include subfolders",
         "result_label": "Output",
-        "result_desc": "Photos are copied into \"{sharp}\" and \"{blur}\" folders inside the photo folder. Originals are never moved or modified.",
+        "result_desc": "Photos are copied into \"{sharp}\", \"{blur}\" (and \"{noface}\") folders inside the photo folder. Originals are never moved or modified.",
         "pick_folder_title": "Choose photo folder",
 
         "th_frame": "Threshold (changes apply instantly, no re-analysis needed)",
@@ -168,7 +172,8 @@ STRINGS = {
 
         "start": "① Analyze",
         "stop": "Stop",
-        "sidecar": "Include RAW / XMP with same name",
+        "sidecar": "Include RAW / XMP",
+        "noface_opt": "No-face photos → \"{noface}\"",
         "copy_btn": "② Copy to \"{sharp}\" / \"{blur}\"",
         "undo_btn": "Delete last copied files",
         "export_csv": "Export CSV",
@@ -210,14 +215,15 @@ STRINGS = {
         "no_photos": "No photos (JPG / PNG / TIF / WEBP) found in this folder.",
         "nothing_to_copy": "Nothing to copy (everything may have been copied already).",
         "confirm_copy": ("Copy into the photo folder:\n\n"
-                         "   \"{sharp}\"   {n_sharp} photos\n   \"{blur}\"   {n_blur} photos\n\n"
+                         "   \"{sharp}\"   {n_sharp} photos\n   \"{blur}\"   {n_blur} photos\n{noface_line}\n"
                          "Originals will not be moved or modified. Continue?"),
+        "confirm_noface_line": "   \"{noface}\"   {n} photos (no face detected)\n",
         "copy_done": "Done! Copied {n} file(s).",
         "copy_skipped": "\n({n} file(s) already existed and were skipped)",
         "copy_errors": "\n\n{n} file(s) failed:\n",
         "error_log_at": "\n\nDetails: {path}",
         "confirm_undo": ("Delete the {n} file(s) copied last time?\n"
-                         "(Only the copies in \"{sharp}\" / \"{blur}\" are deleted. Originals are not affected.)"),
+                         "(Only the copies in \"{sharp}\" / \"{blur}\" / \"{noface}\" are deleted. Originals are not affected.)"),
         "undo_done": "Last copied files deleted.",
         "undo_errors": "\n\n{n} file(s) could not be deleted. You can delete them manually:\n",
         "analyze_first": "Please analyze photos first.",

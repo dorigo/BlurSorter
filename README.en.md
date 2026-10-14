@@ -39,6 +39,7 @@ Weddings, events and portrait sessions easily produce thousands of frames, and z
 - **Works on group shots.** The photo's score comes from the sharpest *main* face, so it passes as long as the subject is in focus. Small faces in the background are ignored.
 - **Photos without faces** fall back to region analysis, using the sharpest parts of the image.
 - **Zero risk to originals.** Photos are only **copied** into `Sharp` / `Blurry` folders inside the photo folder. Nothing is moved, modified, or deleted.
+- **Separate no-face photos.** Optionally put photos with no detectable face (landscapes, objects, people facing away) into a `No faces` folder, so `Sharp` / `Blurry` contain portraits only.
 - **Relative threshold.** Photos are compared against the sharper ones in the same batch, so it adapts to different cameras and lighting without tuning.
 - **Review before sorting.** Adjust the threshold live, inspect each photo (up to 800% zoom, auto-centered on the eyes), and override any result by hand.
 - **RAW / XMP sidecars** with the same name (`.CR3`, `.NEF`, `.ARW`, `.xmp`, …) are copied along with the JPG.
@@ -72,7 +73,7 @@ After running `build.bat` once, you can also double-click `run.bat` to start the
 1. Choose your photo folder and click **① Analyze**.
 2. Click a photo to preview it: **green box** = sharp face, **red box** = blurry face, **gray box** = minor face (not used).
 3. If a result looks wrong, drag the threshold slider, or **double-click / press Space** on a photo to flip it manually.
-4. Click **② Copy to "Sharp" / "Blurry"**.
+4. Click **② Copy to "Sharp" / "Blurry"**. With "No-face photos → \"No faces\"" ticked, photos without a detected face go into a `No faces` folder.
 
 Running it again skips files that already exist. To start over, click **Delete last copied files** (only the copies are removed).
 

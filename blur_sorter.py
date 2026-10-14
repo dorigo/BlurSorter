@@ -37,7 +37,7 @@ from PIL import Image, ImageOps, ImageTk, ImageDraw
 import focus_analyzer as fa
 from i18n import T, set_lang, get_lang, all_values, detect_default_lang, LANG_NAMES
 
-APP_VER = "2.5.3"
+APP_VER = "2.6"
 SPONSOR_URL = "https://p.ecpay.com.tw/9EE4BD6"
 AUTHOR_URL = "https://dorigo-image.com"
 SETTINGS_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "BlurSorter")
@@ -46,7 +46,7 @@ SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
 DEFAULTS = {
     "src": "", "recursive": False,
     "mode": "relative", "face_rel": 40, "tile_rel": 40, "face_abs": 25.0, "tile_abs": 5.0,
-    "sidecar": True, "geometry": "1280x800", "zoom": "fit", "lang": "",
+    "sidecar": True, "noface_dir": True, "geometry": "1280x800", "zoom": "fit", "lang": "",
 }
 
 FILTER_KEYS = ["f_all", "f_blur", "f_sharp", "f_done", "f_err"]
@@ -65,7 +65,7 @@ def app_name() -> str:
 
 def output_dir_names() -> set:
     """所有語言的「清楚 / 模糊」資料夾名稱（掃描時都要略過）"""
-    return all_values("sharp_dir") | all_values("blur_dir") | set(LEGACY_DIRS)
+    return all_values("sharp_dir") | all_values("blur_dir") | all_values("noface_dir") | set(LEGACY_DIRS)
 
 
 def error_text(err: str) -> str:
@@ -362,7 +362,7 @@ class App(tk.Tk):
         ttk.Checkbutton(top, text=T("include_sub"), variable=self.v_rec).grid(row=0, column=3, **pad)
 
         ttk.Label(top, text=T("result_label")).grid(row=1, column=0, sticky="w", **pad)
-        ttk.Label(top, text=T("result_desc", sharp=T("sharp_dir"), blur=T("blur_dir")),
+        ttk.Label(top, text=T("result_desc", sharp=T("sharp_dir"), blur=T("blur_dir"), noface=T("noface_dir")),
                   foreground="#555").grid(row=1, column=1, columnspan=3, sticky="w", **pad)
 
         # --- 門檻
@@ -413,6 +413,9 @@ class App(tk.Tk):
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=10)
         self.v_side = tk.BooleanVar(value=self.cfg["sidecar"])
         ttk.Checkbutton(bar, text=T("sidecar"), variable=self.v_side).pack(side="left")
+        self.v_noface = tk.BooleanVar(value=self.cfg.get("noface_dir", True))
+        ttk.Checkbutton(bar, text=T("noface_opt", noface=T("noface_dir")),
+                        variable=self.v_noface).pack(side="left", padx=(8, 0))
         self.btn_move = ttk.Button(bar, text=T("copy_btn", sharp=T("sharp_dir"), blur=T("blur_dir")),
                                    style="Big.TButton", command=self._do_copy)
         self.btn_move.pack(side="left", padx=6)
@@ -545,7 +548,8 @@ class App(tk.Tk):
 
     def _sync_cfg(self):
         self.cfg.update(src=self.v_src.get(), recursive=self.v_rec.get(),
-                        mode=self.v_mode.get(), sidecar=self.v_side.get())
+                        mode=self.v_mode.get(), sidecar=self.v_side.get(),
+                        noface_dir=self.v_noface.get())
 
     def _filter_selected(self):
         label = self.v_filter.get()
@@ -1144,16 +1148,26 @@ class App(tk.Tk):
         if not targets:
             messagebox.showinfo(app_name(), T("nothing_to_copy"))
             return
-        n_blur = sum(1 for p in targets if self._verdict(p))
-        n_sharp = len(targets) - n_blur
-        sharp_dir, blur_dir = T("sharp_dir"), T("blur_dir")
+        sharp_dir, blur_dir, noface_dir = T("sharp_dir"), T("blur_dir"), T("noface_dir")
+        use_noface = self.v_noface.get()
+
+        def dest(p):
+            """這張照片要放到哪個資料夾"""
+            if use_noface and self.results[p].method != "face":
+                return noface_dir
+            return blur_dir if self._verdict(p) else sharp_dir
+
+        n_noface = sum(1 for p in targets if dest(p) == noface_dir)
+        n_blur = sum(1 for p in targets if dest(p) == blur_dir)
+        n_sharp = len(targets) - n_blur - n_noface
+        noface_line = T("confirm_noface_line", noface=noface_dir, n=n_noface) if use_noface else ""
         if not messagebox.askyesno(app_name(), T("confirm_copy", sharp=sharp_dir, blur=blur_dir,
-                                                 n_sharp=n_sharp, n_blur=n_blur)):
+                                                 n_sharp=n_sharp, n_blur=n_blur, noface_line=noface_line)):
             return
         self._release_preview()
         log, errors, skipped = [], [], 0
         for p in targets:
-            folder = blur_dir if self._verdict(p) else sharp_dir
+            folder = dest(p)
             dst_root = os.path.join(src_root, folder)
             files = [p] + (self._sidecars(p) if self.v_side.get() else [])
             main_ok = False
@@ -1209,7 +1223,8 @@ class App(tk.Tk):
         if not self.last_log:
             return
         if not messagebox.askyesno(app_name(), T("confirm_undo", n=len(self.last_log),
-                                                 sharp=T("sharp_dir"), blur=T("blur_dir"))):
+                                                 sharp=T("sharp_dir"), blur=T("blur_dir"),
+                                                 noface=T("noface_dir"))):
             return
         self._release_preview()
         errors, restored = [], set()
