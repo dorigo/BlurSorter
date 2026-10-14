@@ -37,7 +37,7 @@ from PIL import Image, ImageOps, ImageTk, ImageDraw
 import focus_analyzer as fa
 from i18n import T, set_lang, get_lang, all_values, detect_default_lang, LANG_NAMES
 
-APP_VER = "2.6.1"
+APP_VER = "2.6.2"
 SPONSOR_URL = "https://p.ecpay.com.tw/9EE4BD6"
 AUTHOR_URL = "https://dorigo-image.com"
 SETTINGS_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "BlurSorter")
@@ -586,9 +586,20 @@ class App(tk.Tk):
         return [os.path.join(src, d) for d in output_dir_names()] if src else []
 
     def _open_dst(self):
-        d = self.v_src.get().strip()
-        if d and os.path.isdir(d) and hasattr(os, "startfile"):
-            os.startfile(d)
+        self._open_folder(self.v_src.get().strip())
+
+    @staticmethod
+    def _open_folder(d):
+        if not d or not os.path.isdir(d):
+            return
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(d)                       # Windows：用檔案總管開啟
+            else:
+                import subprocess
+                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", d])
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ 門檻
     def _mode_changed(self, init=False):
@@ -1268,7 +1279,9 @@ class App(tk.Tk):
         if r["errors"]:
             msg += T("copy_errors", n=len(r["errors"])) + "\n".join(r["errors"][:10])
             msg += T("error_log_at", path=os.path.join(SETTINGS_DIR, "error.log"))
-        messagebox.showinfo(app_name(), msg)
+        # 完成後詢問是否開啟照片資料夾（裡面就是「清楚」「模糊」「無人臉」）
+        if messagebox.askyesno(app_name(), msg + T("ask_open_folder")):
+            self._open_folder(self._copy_src_root)
 
     def _write_log(self, dst_root, log):
         if not log:
