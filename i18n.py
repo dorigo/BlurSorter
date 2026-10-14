@@ -86,6 +86,7 @@ STRINGS = {
         # 狀態列
         "status_ready": "請選擇照片資料夾，然後按「開始分析」。",
         "status_stopping": "正在停止…",
+        "st_copying": "複製中 {n}/{total}　{name}",
         "st_running": "分析中 {n}/{total}",
         "st_total": "共 {n} 張",
         "st_counts": "清楚 {sharp} 張　｜　模糊 {blur} 張",
@@ -104,6 +105,7 @@ STRINGS = {
                          "原始照片不會移動或修改。確定執行？"),
         "confirm_noface_line": "　「{noface}」　{n} 張（未偵測到人臉）\n",
         "copy_done": "完成！已複製 {n} 個檔案。",
+        "copy_cancelled": "\n（已中途停止，其餘照片尚未複製，可再按一次繼續）",
         "copy_skipped": "\n（{n} 個檔案已存在，略過）",
         "copy_errors": "\n\n有 {n} 個檔案失敗：\n",
         "error_log_at": "\n\n詳細紀錄：{path}",
@@ -202,6 +204,7 @@ STRINGS = {
 
         "status_ready": "Choose a photo folder, then click \"Analyze\".",
         "status_stopping": "Stopping…",
+        "st_copying": "Copying {n}/{total}   {name}",
         "st_running": "Analyzing {n}/{total}",
         "st_total": "{n} photos",
         "st_counts": "Sharp {sharp}  |  Blurry {blur}",
@@ -219,6 +222,7 @@ STRINGS = {
                          "Originals will not be moved or modified. Continue?"),
         "confirm_noface_line": "   \"{noface}\"   {n} photos (no face detected)\n",
         "copy_done": "Done! Copied {n} file(s).",
+        "copy_cancelled": "\n(Stopped early. The remaining photos were not copied; click Copy again to continue.)",
         "copy_skipped": "\n({n} file(s) already existed and were skipped)",
         "copy_errors": "\n\n{n} file(s) failed:\n",
         "error_log_at": "\n\nDetails: {path}",

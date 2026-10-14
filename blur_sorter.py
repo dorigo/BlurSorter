@@ -37,7 +37,7 @@ from PIL import Image, ImageOps, ImageTk, ImageDraw
 import focus_analyzer as fa
 from i18n import T, set_lang, get_lang, all_values, detect_default_lang, LANG_NAMES
 
-APP_VER = "2.6"
+APP_VER = "2.6.1"
 SPONSOR_URL = "https://p.ecpay.com.tw/9EE4BD6"
 AUTHOR_URL = "https://dorigo-image.com"
 SETTINGS_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "BlurSorter")
@@ -270,6 +270,8 @@ class App(tk.Tk):
         self.last_log: list[tuple] = []                    # [(op, src, dst)]
         self.q: queue.Queue = queue.Queue()
         self.stop_flag = threading.Event()
+        self.copy_cancel = threading.Event()
+        self._copying = None          # 複製進行中時：{"n": 已處理檔案數, "total": 總數, "name": 目前檔名}
         self.worker: threading.Thread | None = None
         self.total = 0
         self.face_th = 0.0
@@ -532,10 +534,10 @@ class App(tk.Tk):
         # 還原狀態
         self.pb.configure(maximum=pb_max, value=pb_val)
         running = self.worker is not None and self.worker.is_alive()
-        if running:
+        if running or self._copying is not None:
             self.btn_start.configure(state="disabled"); self.btn_stop.configure(state="normal")
             self.btn_move.configure(state="disabled")
-        self.btn_undo.configure(state="normal" if self.last_log else "disabled")
+        self.btn_undo.configure(state="normal" if (self.last_log and self._copying is None) else "disabled")
         self._recalc()
         keep = [p for p in sel if self.tree.exists(p)]
         if keep:
@@ -673,6 +675,7 @@ class App(tk.Tk):
             messagebox.showinfo(app_name(), T("no_photos"))
             return
         self.results.clear(); self.order.clear(); self.override.clear(); self.done_paths.clear()
+        self._last_copy_cancelled = False
         self.tree.delete(*self.tree.get_children())
         self._release_preview()
         self.total = len(files)
@@ -701,7 +704,10 @@ class App(tk.Tk):
         self.q.put(("done", None))
 
     def _stop(self):
-        self.stop_flag.set()
+        if self._copying is not None:
+            self.copy_cancel.set()
+        else:
+            self.stop_flag.set()
         self.btn_stop.configure(state="disabled")
         self.lbl_status.configure(text=T("status_stopping"))
 
@@ -714,6 +720,14 @@ class App(tk.Tk):
                     self.results[r.path] = r
                     self.order.append(r.path)
                     changed = True
+                elif kind == "copy_progress":
+                    self._copying = r
+                    self.pb.configure(maximum=max(1, r["total"]), value=r["n"])
+                    self._update_status()
+                    continue
+                elif kind == "copy_done":
+                    self._copy_finished(r)
+                    continue
                 elif kind == "done":
                     self.worker = None
                     self._last_refresh = 0
@@ -728,7 +742,8 @@ class App(tk.Tk):
         if getattr(self, "_dirty", False) and time.time() - getattr(self, "_last_refresh", 0) > 0.6:
             self._dirty = False
             self._last_refresh = time.time()
-            self.pb.configure(value=len(self.order))
+            if self._copying is None:
+                self.pb.configure(value=len(self.order))
             self._recalc()   # 相對門檻依目前結果更新，並重繪清單
         self.after(150, self._poll)
 
@@ -812,6 +827,10 @@ class App(tk.Tk):
         return "break"
 
     def _update_status(self):
+        if self._copying is not None:
+            c = self._copying
+            self.lbl_status.configure(text=T("st_copying", n=c["n"], total=c["total"], name=c["name"]))
+            return
         n = len(self.order)
         blur = sum(1 for p in self.order if self._verdict(p))
         sharp = sum(1 for p in self.order if self._verdict(p) is False)
@@ -1164,14 +1183,47 @@ class App(tk.Tk):
         if not messagebox.askyesno(app_name(), T("confirm_copy", sharp=sharp_dir, blur=blur_dir,
                                                  n_sharp=n_sharp, n_blur=n_blur, noface_line=noface_line)):
             return
-        self._release_preview()
-        log, errors, skipped = [], [], 0
-        for p in targets:
-            folder = dest(p)
+        # 先決定每張照片的目的資料夾（判定在主執行緒讀取，背景只負責複製檔案）
+        jobs = [(p, dest(p)) for p in targets]
+        self._copy_src_root = src_root
+        self.copy_cancel.clear()
+        self._copying = {"n": 0, "total": len(jobs), "name": ""}
+        self.btn_start.configure(state="disabled"); self.btn_move.configure(state="disabled")
+        self.btn_undo.configure(state="disabled"); self.btn_stop.configure(state="normal")
+        self.pb.configure(maximum=max(1, len(jobs)), value=0)
+        self._update_status()
+        threading.Thread(target=self._copy_worker, args=(jobs, src_root, self.v_side.get()),
+                         daemon=True).start()
+
+    def _copy_worker(self, jobs, src_root, with_sidecars):
+        """背景複製：每處理一個檔案就回報進度，可隨時停止"""
+        dir_cache = {}
+
+        def sidecars(path):
+            d, fn = os.path.split(path)
+            if d not in dir_cache:            # 每個資料夾只列一次，照片很多時也不會變慢
+                try:
+                    dir_cache[d] = [f for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))]
+                except OSError:
+                    dir_cache[d] = []
+            stem = os.path.splitext(fn)[0].lower()
+            return [os.path.join(d, f) for f in dir_cache[d]
+                    if f != fn and (os.path.splitext(f)[0].lower() == stem or f.lower().startswith(stem + "."))]
+
+        plan = [(p, folder, [p] + (sidecars(p) if with_sidecars else [])) for p, folder in jobs]
+        total = sum(len(files) for _, _, files in plan)
+        self.q.put(("copy_progress", {"n": 0, "total": total, "name": ""}))
+        log, errors, skipped, done_map, n = [], [], 0, {}, 0
+        cancelled = False
+        for p, folder, files in plan:
+            if self.copy_cancel.is_set():
+                cancelled = True
+                break
             dst_root = os.path.join(src_root, folder)
-            files = [p] + (self._sidecars(p) if self.v_side.get() else [])
             main_ok = False
             for f in files:
+                n += 1
+                self.q.put(("copy_progress", {"n": n, "total": total, "name": os.path.basename(f)}))
                 try:
                     rel = os.path.relpath(os.path.dirname(f), src_root)
                     ddir = dst_root if rel in (".", "") else os.path.join(dst_root, rel)
@@ -1189,19 +1241,32 @@ class App(tk.Tk):
                     log_error("copy", f, e)
                     errors.append(os.path.basename(f) + T("colon") + explain_error(e, f))
                     if f == p:
+                        n += len(files) - 1    # 主檔失敗就略過它的 RAW / XMP
                         break
             if main_ok:
-                self.done_paths[p] = folder
-        self.last_log = log
-        self.btn_undo.configure(state="normal" if log else "disabled")
-        self._write_log(src_root, log)
-        self._preview_path = None
+                done_map[p] = folder
+        self.q.put(("copy_done", {"log": log, "errors": errors, "skipped": skipped,
+                                  "done": done_map, "cancelled": cancelled}))
+
+    def _copy_finished(self, r):
+        self._copying = None
+        self.done_paths.update(r["done"])
+        # 上次是中途停止、這次接著複製：視為同一批，「刪除上次複製的檔案」會一起刪
+        self.last_log = (self.last_log + r["log"]) if getattr(self, "_last_copy_cancelled", False) else r["log"]
+        self._last_copy_cancelled = r["cancelled"]
+        self.btn_start.configure(state="normal"); self.btn_move.configure(state="normal")
+        self.btn_stop.configure(state="disabled")
+        self.btn_undo.configure(state="normal" if self.last_log else "disabled")
+        self.pb.configure(maximum=max(1, self.total), value=len(self.order))
+        self._write_log(self._copy_src_root, r["log"])
         self._refresh_tree()
-        msg = T("copy_done", n=len(log))
-        if skipped:
-            msg += T("copy_skipped", n=skipped)
-        if errors:
-            msg += T("copy_errors", n=len(errors)) + "\n".join(errors[:10])
+        msg = T("copy_done", n=len(r["log"]))
+        if r["cancelled"]:
+            msg += T("copy_cancelled")
+        if r["skipped"]:
+            msg += T("copy_skipped", n=r["skipped"])
+        if r["errors"]:
+            msg += T("copy_errors", n=len(r["errors"])) + "\n".join(r["errors"][:10])
             msg += T("error_log_at", path=os.path.join(SETTINGS_DIR, "error.log"))
         messagebox.showinfo(app_name(), msg)
 
@@ -1272,6 +1337,7 @@ class App(tk.Tk):
 
     def _on_close(self):
         self.stop_flag.set()
+        self.copy_cancel.set()
         self._sync_cfg()
         self.cfg["geometry"] = self.geometry()
         save_settings(self.cfg)
